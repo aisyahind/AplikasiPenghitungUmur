@@ -43,87 +43,124 @@ public class PenghitungUmurHelper {
 
     // Metode utama untuk mengambil peristiwa
     public void fetchPeristiwaPenting(int month, int day, JTextArea txtAreaPeristiwa, Supplier<Boolean> shouldStop) {
-        new Thread(() -> {
-            try {
-                // API: http://history.muffinlabs.com/date/month/day
-                String urlString = "http://history.muffinlabs.com/date/" + month + "/" + day;
-                URL url = new URL(urlString);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(8000); // 8 detik timeout
-                conn.setReadTimeout(8000);
+    new Thread(() -> {
+        try {
+            // Gunakan HTTPS agar tidak kena redirect 308
+            String urlString = "https://history.muffinlabs.com/date/" + month + "/" + day;
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setInstanceFollowRedirects(true); // otomatis ikuti redirect
+            conn.setConnectTimeout(10000); // 10 detik
+            conn.setReadTimeout(10000);
 
-                int responseCode = conn.getResponseCode();
-                
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                     throw new Exception("HTTP Error Code: " + responseCode + " - Gagal mengambil data.");
-                }
+            int responseCode = conn.getResponseCode();
 
-                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                String inputLine;
-                StringBuilder content = new StringBuilder();
-                while ((inputLine = in.readLine()) != null) {
-                    content.append(inputLine);
-                }
-                in.close();
-                conn.disconnect();
-
-                if (shouldStop.get()) {
-                    javax.swing.SwingUtilities.invokeLater(() -> txtAreaPeristiwa.setText("Pengambilan data dibatalkan.\n"));
-                    return;
-                }
-
-                // Parsing JSON
-                JSONObject json = new JSONObject(content.toString());
-                
-                // Cek dan navigasi ke objek 'data' lalu array 'Events'
-                if (!json.has("data") || !json.getJSONObject("data").has("Events")) {
-                    throw new Exception("Struktur JSON tidak sesuai (Missing 'data' or 'Events').");
-                }
-                
-                JSONObject data = json.getJSONObject("data");
-                JSONArray events = data.getJSONArray("Events");
-
-                javax.swing.SwingUtilities.invokeLater(() -> 
-                    txtAreaPeristiwa.setText("Peristiwa Sejarah (" + month + "/" + day + " - Bahasa Inggris):\n---------------------------------------------------------------\n")
-                );
-
-                if (events.length() == 0) {
-                    javax.swing.SwingUtilities.invokeLater(() ->
-                            txtAreaPeristiwa.append("Tidak ada peristiwa penting yang ditemukan pada tanggal ini."));
-                    return;
-                }
-
-                for (int i = 0; i < events.length(); i++) {
-                    if (shouldStop.get()) {
-                        javax.swing.SwingUtilities.invokeLater(() -> {
-                                txtAreaPeristiwa.append("\nPengambilan data dihentikan.");
-                                txtAreaPeristiwa.setCaretPosition(0);
-                            });
-                        return;
-                    }
-
-                    JSONObject event = events.getJSONObject(i);
-                    String year = event.getString("year");
-                    String description = event.getString("text"); // Menggunakan key 'text'
-
-                    javax.swing.SwingUtilities.invokeLater(() ->
-                            txtAreaPeristiwa.append(year + ": " + description + "\n"));
-                }
-                
-                javax.swing.SwingUtilities.invokeLater(() -> txtAreaPeristiwa.setCaretPosition(0));
-
-            } catch (Exception e) {
-                String errorMsg = e.getMessage();
-                System.err.println("API Error: " + errorMsg); // Log error di console
-                javax.swing.SwingUtilities.invokeLater(() -> {
-                    txtAreaPeristiwa.setText("❌ Gagal mendapatkan data peristiwa. Kemungkinan:\n" + 
-                                            "1. Koneksi internet terputus.\n" + 
-                                            "2. Firewall memblokir akses.\n" +
-                                            "3. Library 'org.json.jar' belum terpasang.\n" +
-                                            "Detail: " + errorMsg);
-                });
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                System.err.println("HTTP Response: " + responseCode);
+                throw new Exception("HTTP Error Code: " + responseCode + " - Gagal mengambil data dari server.");
             }
-        }).start();
+
+            // Baca hasil respon
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            String inputLine;
+            StringBuilder content = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
+            in.close();
+            conn.disconnect();
+
+            if (shouldStop.get()) {
+                javax.swing.SwingUtilities.invokeLater(() ->
+                        txtAreaPeristiwa.setText("Pengambilan data dibatalkan.\n"));
+                return;
+            }
+
+            // Parsing JSON
+            String jsonText = content.toString().trim();
+            if (!jsonText.startsWith("{")) {
+                throw new Exception("Response bukan JSON valid: " + jsonText.substring(0, Math.min(200, jsonText.length())));
+            }
+
+            JSONObject json = new JSONObject(jsonText);
+            if (!json.has("data") || !json.getJSONObject("data").has("Events")) {
+                throw new Exception("Struktur JSON tidak sesuai (Missing 'data' or 'Events').");
+            }
+
+            JSONObject data = json.getJSONObject("data");
+            JSONArray events = data.getJSONArray("Events");
+
+            javax.swing.SwingUtilities.invokeLater(() ->
+                    txtAreaPeristiwa.setText("📜 Peristiwa Sejarah (" + day + "/" + month + "):\n------------------------------------------\n"));
+
+            if (events.length() == 0) {
+                javax.swing.SwingUtilities.invokeLater(() ->
+                        txtAreaPeristiwa.append("Tidak ada peristiwa penting yang ditemukan pada tanggal ini."));
+                return;
+            }
+
+            for (int i = 0; i < events.length(); i++) {
+                if (shouldStop.get()) {
+                    javax.swing.SwingUtilities.invokeLater(() -> {
+                        txtAreaPeristiwa.append("\n⛔ Pengambilan data dihentikan.");
+                        txtAreaPeristiwa.setCaretPosition(0);
+                    });
+                    return;
+                }
+
+                JSONObject event = events.getJSONObject(i);
+                String year = event.optString("year", "Tahun tidak diketahui");
+                String description = event.optString("text", "(Tanpa deskripsi)");
+
+                // 🔹 Translasi otomatis ke Bahasa Indonesia
+                String translated = translateToIndonesian(description);
+
+                javax.swing.SwingUtilities.invokeLater(() ->
+                        txtAreaPeristiwa.append(year + ": " + translated + "\n"));
+            }
+
+            javax.swing.SwingUtilities.invokeLater(() ->
+                    txtAreaPeristiwa.setCaretPosition(0));
+
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            System.err.println("API Error: " + errorMsg);
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                txtAreaPeristiwa.setText("❌ Gagal mendapatkan data peristiwa. Kemungkinan:\n" +
+                        "1. Koneksi internet terputus.\n" +
+                        "2. Server API sedang dialihkan atau down.\n" +
+                        "3. Library org.json.jar belum terpasang.\n\n" +
+                        "Detail: " + errorMsg);
+            });
+        }
+    }).start();
+}
+    
+    private String translateToIndonesian(String text) {
+    try {
+        String apiUrl = "https://api.mymemory.translated.net/get?q=" +
+                java.net.URLEncoder.encode(text, "UTF-8") +
+                "&langpair=en|id";
+        URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(8000);
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = in.readLine()) != null) response.append(line);
+        in.close();
+
+        JSONObject json = new JSONObject(response.toString());
+        if (json.has("responseData")) {
+            return json.getJSONObject("responseData").optString("translatedText", text);
+        }
+    } catch (Exception e) {
+        System.err.println("Gagal menerjemahkan: " + e.getMessage());
     }
+    return text; // fallback jika gagal translate
+}
 }

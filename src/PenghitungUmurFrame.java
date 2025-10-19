@@ -224,8 +224,8 @@ Date inputDate = jDateChooser1.getDate();
         }
 
         try {
-            // Konversi Date dari JDateChooser ke LocalDate
             LocalDate tglLahir = inputDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            // Konversi Date dari JDateChooser ke LocalDate
             LocalDate tglSekarang = LocalDate.now();
 
             if (tglLahir.isAfter(tglSekarang)) {
@@ -259,6 +259,21 @@ Date inputDate = jDateChooser1.getDate();
             
             txtBerikutnya.setText(ultahStr);
             
+            try {
+    int month = tglLahir.getMonthValue();
+    int day = tglLahir.getDayOfMonth();
+
+    jTextArea1.setText("Mengambil peristiwa penting pada tanggal " + day + " " + tglLahir.getMonth() + "...\n");
+
+    // 4. Jalankan pengambilan data dalam thread baru
+    new Thread(() -> {
+        helper.fetchPeristiwaPenting(month, day, jTextArea1, () -> false);
+    }).start();
+
+} catch (Exception e) {
+    jTextArea1.setText("Gagal mengambil data: " + e.getMessage());
+}
+           
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Terjadi kesalahan saat menghitung umur. Pastikan input benar. Error: " + e.getMessage(), "Error Perhitungan", JOptionPane.ERROR_MESSAGE);
             e.printStackTrace();
@@ -273,11 +288,7 @@ Date inputDate = jDateChooser1.getDate();
     }//GEN-LAST:event_txtBerikutnyaActionPerformed
 
     private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
-        stopPeristiwaThread();
-        jDateChooser1.setDate(null);
-        jTextFieldUmur.setText("");
-        txtBerikutnya.setText("");
-        jTextArea1.setText("");
+        System.exit(0);
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jDateChooser1PropertyChange(java.beans.PropertyChangeEvent evt) {//GEN-FIRST:event_jDateChooser1PropertyChange
@@ -288,34 +299,6 @@ Date inputDate = jDateChooser1.getDate();
             stopPeristiwaThread();
 }
     }//GEN-LAST:event_jDateChooser1PropertyChange
-
-    private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {
-        Date inputDate = jDateChooser1.getDate();
-        
-        if (inputDate == null) {
-            JOptionPane.showMessageDialog(this, "Mohon pilih Tanggal Lahir terlebih dahulu.", "Peringatan", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        // 1. Hentikan thread lama untuk menghindari tumpang tindih
-        stopPeristiwaThread(); 
-        jTextArea1.setText("Mengambil data peristiwa dari API (memerlukan koneksi internet)...");
-
-        try {
-            LocalDate tglLahir = inputDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-            int month = tglLahir.getMonthValue();
-            int day = tglLahir.getDayOfMonth();
-            
-            // 2. Buat dan jalankan thread baru
-            peristiwaThread = new Thread(() -> 
-                helper.fetchPeristiwaPenting(month, day, jTextArea1, stopFetching::get)
-            );
-            peristiwaThread.start();
-
-        } catch (Exception e) {
-            jTextArea1.setText("Gagal menyiapkan pengambilan data: " + e.getMessage());
-        }
-    }
 
 /**
      * Main method
